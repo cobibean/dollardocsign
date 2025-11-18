@@ -12,6 +12,7 @@ import {
 import { AppError, AppErrorCode } from '@documenso/lib/errors/app-error';
 import {
   canCreateEnvelope,
+  getPlanForUser,
   incrementUsageCountersOnEnvelopeCreated,
 } from '@documenso/lib/server-only/billing/plan-limits';
 import { normalizePdf as makeNormalizedPdf } from '@documenso/lib/server-only/pdf/normalize-pdf';
@@ -155,15 +156,23 @@ export const createEnvelope = async ({
     });
   }
 
+  const planState = getPlanForUser({ user: billingUser, team });
+
+  if (type === EnvelopeType.TEMPLATE && planState.plan === 'FREE') {
+    throw new AppError(AppErrorCode.LIMIT_EXCEEDED, {
+      message: 'Templates are available on Starter and Pro plans.',
+      statusCode: 400,
+    });
+  }
+
   const shouldEnforcePlanLimits = type === EnvelopeType.DOCUMENT && !skipBillingCheck;
 
-  const canCreateResult =
-    shouldEnforcePlanLimits === false
-      ? null
-      : await canCreateEnvelope({
-          user: billingUser,
-          team,
-        });
+  const canCreateResult = shouldEnforcePlanLimits
+    ? await canCreateEnvelope({
+        user: billingUser,
+        team,
+      })
+    : null;
 
   if (canCreateResult && !canCreateResult.allowed) {
     throw new AppError(AppErrorCode.LIMIT_EXCEEDED, {

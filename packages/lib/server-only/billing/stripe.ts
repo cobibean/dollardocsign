@@ -6,15 +6,19 @@ import { stripe } from '@documenso/lib/server-only/stripe';
 import { env } from '@documenso/lib/utils/env';
 import { prisma } from '@documenso/prisma';
 
-const STARTER_PRICE_ID = () => env('NEXT_PRIVATE_STRIPE_STARTER_PRICE_ID');
-const PRO_PRICE_ID = () => env('NEXT_PRIVATE_STRIPE_PRO_PRICE_ID');
-const WEBHOOK_SECRET = () => env('NEXT_PRIVATE_STRIPE_WEBHOOK_SECRET');
+const STARTER_PRICE_ID = () =>
+  env('STRIPE_PRICE_STARTER_ID') ?? env('NEXT_PRIVATE_STRIPE_STARTER_PRICE_ID');
+const PRO_PRICE_ID = () => env('STRIPE_PRICE_PRO_ID') ?? env('NEXT_PRIVATE_STRIPE_PRO_PRICE_ID');
+const WEBHOOK_SECRET = () =>
+  env('STRIPE_WEBHOOK_SECRET') ?? env('NEXT_PRIVATE_STRIPE_WEBHOOK_SECRET');
+const BILLING_PORTAL_RETURN_URL = () =>
+  env('STRIPE_BILLING_PORTAL_RETURN_URL') ?? NEXT_PUBLIC_WEBAPP_URL();
 
 const ensureStarterPriceId = () => {
   const priceId = STARTER_PRICE_ID();
 
   if (!priceId) {
-    throw new Error('Missing NEXT_PRIVATE_STRIPE_STARTER_PRICE_ID');
+    throw new Error('Missing STRIPE_PRICE_STARTER_ID (or NEXT_PRIVATE_STRIPE_STARTER_PRICE_ID).');
   }
 
   return priceId;
@@ -24,10 +28,30 @@ const ensureProPriceId = () => {
   const priceId = PRO_PRICE_ID();
 
   if (!priceId) {
-    throw new Error('Missing NEXT_PRIVATE_STRIPE_PRO_PRICE_ID');
+    throw new Error('Missing STRIPE_PRICE_PRO_ID (or NEXT_PRIVATE_STRIPE_PRO_PRICE_ID).');
   }
 
   return priceId;
+};
+
+const ensureWebhookSecret = () => {
+  const secret = WEBHOOK_SECRET();
+
+  if (!secret) {
+    throw new Error('Missing STRIPE_WEBHOOK_SECRET (or NEXT_PRIVATE_STRIPE_WEBHOOK_SECRET).');
+  }
+
+  return secret;
+};
+
+const ensurePortalReturnUrl = () => {
+  const url = BILLING_PORTAL_RETURN_URL();
+
+  if (!url) {
+    throw new Error('Missing STRIPE_BILLING_PORTAL_RETURN_URL.');
+  }
+
+  return url;
 };
 
 const ensureStripeCustomerForUser = async (userId: number) => {
@@ -192,6 +216,24 @@ export const createCheckoutSessionForTeamPro = async ({
   return session;
 };
 
+export const createBillingPortalSessionForUser = async ({ userId }: { userId: number }) => {
+  const customerId = await ensureStripeCustomerForUser(userId);
+
+  return await stripe.billingPortal.sessions.create({
+    customer: customerId,
+    return_url: ensurePortalReturnUrl(),
+  });
+};
+
+export const createBillingPortalSessionForTeam = async ({ teamId }: { teamId: number }) => {
+  const customerId = await ensureStripeCustomerForTeam(teamId);
+
+  return await stripe.billingPortal.sessions.create({
+    customer: customerId,
+    return_url: ensurePortalReturnUrl(),
+  });
+};
+
 const isSubscriptionActive = (status: Stripe.Subscription.Status) =>
   status === 'active' || status === 'trialing';
 
@@ -220,12 +262,21 @@ const downgradeTeam = async (teamId: number) => {
   });
 };
 
+const getSubscriptionCustomerId = (subscription: Stripe.Subscription) => {
+  if (typeof subscription.customer === 'string') {
+    return subscription.customer;
+  }
+
+  return subscription.customer?.id;
+};
+
 const syncSubscription = async (subscription: Stripe.Subscription) => {
   const metadata = subscription.metadata ?? {};
   const plan = (metadata.plan ?? '').toUpperCase();
   const userId = metadata.userId ? Number(metadata.userId) : undefined;
   const teamId = metadata.teamId ? Number(metadata.teamId) : undefined;
   const active = isSubscriptionActive(subscription.status);
+  const customerId = getSubscriptionCustomerId(subscription);
 
   if (plan === 'STARTER' && userId) {
     if (!active) {
@@ -239,6 +290,7 @@ const syncSubscription = async (subscription: Stripe.Subscription) => {
         plan: PlanType.STARTER,
         planValidUntil: planValidUntil(subscription),
         stripeSubscriptionId: subscription.id,
+        ...(customerId ? { stripeCustomerId: customerId } : {}),
       },
     });
   }
@@ -255,9 +307,23 @@ const syncSubscription = async (subscription: Stripe.Subscription) => {
         plan: PlanType.PRO,
         planValidUntil: planValidUntil(subscription),
         stripeSubscriptionId: subscription.id,
+        ...(customerId ? { stripeCustomerId: customerId } : {}),
       },
     });
   }
+};
+
+const syncCheckoutSession = async (session: Stripe.Checkout.Session) => {
+  const subscriptionId =
+    typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
+
+  if (!subscriptionId) {
+    return;
+  }
+
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+
+  await syncSubscription(subscription);
 };
 
 export const handleStripeWebhook = async (request: Request) => {
@@ -267,11 +333,7 @@ export const handleStripeWebhook = async (request: Request) => {
     return new Response('Missing stripe signature', { status: 400 });
   }
 
-  const secret = WEBHOOK_SECRET();
-
-  if (!secret) {
-    return new Response('Stripe webhook secret missing', { status: 500 });
-  }
+  const secret = ensureWebhookSecret();
 
   const payload = await request.text();
   let event: Stripe.Event;
@@ -284,6 +346,9 @@ export const handleStripeWebhook = async (request: Request) => {
   }
 
   switch (event.type) {
+    case 'checkout.session.completed':
+      await syncCheckoutSession(event.data.object as Stripe.Checkout.Session);
+      break;
     case 'customer.subscription.created':
     case 'customer.subscription.updated':
     case 'customer.subscription.resumed':

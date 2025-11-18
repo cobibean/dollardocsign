@@ -27,6 +27,7 @@ import {
 } from '@documenso/ui/primitives/tooltip';
 import { useToast } from '@documenso/ui/primitives/use-toast';
 
+import { UpgradeCtaButtons } from '~/components/general/upgrade-cta-buttons';
 import { useCurrentTeam } from '~/providers/team';
 
 export type EnvelopeUploadButtonProps = {
@@ -52,18 +53,24 @@ export const EnvelopeUploadButton = ({ className, type, folderId }: EnvelopeUplo
     (timezone) => timezone === Intl.DateTimeFormat().resolvedOptions().timeZone,
   );
 
-  const { quota, remaining, refreshLimits, maximumEnvelopeItemCount } = useLimits();
+  const { plan, usage, quota, remaining, refreshLimits, maximumEnvelopeItemCount } = useLimits();
 
   const [isLoading, setIsLoading] = useState(false);
 
   const { mutateAsync: createEnvelope } = trpc.envelope.create.useMutation();
 
+  const limitReached = remaining.documents === 0;
+  const nearFreeLimit =
+    plan === 'FREE' &&
+    remaining.documents > 0 &&
+    usage.lifetime.limit - usage.lifetime.used <= 2;
+
   const disabledMessage = useMemo(() => {
-    if (organisation.subscription && remaining.documents === 0) {
+    if (organisation.subscription && limitReached) {
       return msg`Document upload disabled due to unpaid invoices`;
     }
 
-    if (remaining.documents === 0) {
+    if (limitReached) {
       return msg`You have reached your document limit.`;
     }
 
@@ -177,7 +184,7 @@ export const EnvelopeUploadButton = ({ className, type, folderId }: EnvelopeUplo
             <div>
               <DocumentUploadButton
                 loading={isLoading}
-                disabled={remaining.documents === 0 || !user.emailVerified}
+                disabled={limitReached || !user.emailVerified}
                 disabledMessage={disabledMessage}
                 onDrop={onFileDrop}
                 onDropRejected={onFileDropRejected}
@@ -201,6 +208,34 @@ export const EnvelopeUploadButton = ({ className, type, folderId }: EnvelopeUplo
             )}
         </Tooltip>
       </TooltipProvider>
+
+      {limitReached && (
+        <div className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm">
+          <p className="font-semibold text-destructive">
+            <Trans>You’ve reached your document limit for the current plan.</Trans>
+          </p>
+          <p className="text-muted-foreground mt-1 text-xs">
+            <Trans>Upgrade to keep sending documents without interruption.</Trans>
+          </p>
+          <UpgradeCtaButtons
+            className="mt-3"
+            showStarter={plan === 'FREE'}
+            showPro={plan !== 'PRO'}
+          />
+        </div>
+      )}
+
+      {nearFreeLimit && (
+        <div className="mt-4 rounded-md border border-amber-400/50 bg-amber-400/10 p-3 text-xs">
+          <p className="font-medium text-amber-900 dark:text-amber-200">
+            <Trans>You’ve used {usage.lifetime.used} of {usage.lifetime.limit} free documents.</Trans>
+          </p>
+          <p className="text-muted-foreground mt-1">
+            <Trans>Upgrade to Starter for $1/mo to unlock a monthly quota.</Trans>
+          </p>
+          <UpgradeCtaButtons className="mt-2" showStarter />
+        </div>
+      )}
     </div>
   );
 };

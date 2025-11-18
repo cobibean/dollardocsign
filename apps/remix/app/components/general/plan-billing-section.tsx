@@ -8,46 +8,22 @@ import { PLAN_DISPLAY_NAMES, PRO_TEAM_MEMBER_LIMIT } from '@documenso/lib/univer
 import { Button } from '@documenso/ui/primitives/button';
 import { useToast } from '@documenso/ui/primitives/use-toast';
 
+import { useBillingPortalRedirect, useCheckoutRedirect } from '~/hooks/use-checkout';
+
 const formatPlanName = (plan: SignmatePlan) => PLAN_DISPLAY_NAMES[plan] ?? plan;
 
-type PlanBillingSectionProps = {
-  teamId: number;
-};
-
-export const PlanBillingSection = ({ teamId }: PlanBillingSectionProps) => {
+export const PlanBillingSection = () => {
   const { plan, usage, loading } = useLimits();
   const { toast } = useToast();
   const [isRedirecting, setIsRedirecting] = useState<'STARTER' | 'PRO' | null>(null);
+  const { startCheckout, isLoading: checkoutLoading } = useCheckoutRedirect();
+  const { openPortal, isLoading: portalLoading } = useBillingPortalRedirect();
 
   const handleUpgrade = async (targetPlan: 'STARTER' | 'PRO') => {
     try {
       setIsRedirecting(targetPlan);
 
-      const response = await fetch('/api/billing/checkout', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          plan: targetPlan,
-          teamId: targetPlan === 'PRO' ? teamId : undefined,
-        }),
-      });
-
-      if (!response.ok) {
-        const message = await response
-          .json()
-          .catch(() => ({ message: 'Unable to start checkout' }));
-        throw new Error(message.message ?? 'Unable to start checkout');
-      }
-
-      const data = (await response.json()) as { url?: string };
-
-      if (!data.url) {
-        throw new Error('No checkout URL returned');
-      }
-
-      window.location.href = data.url;
+      await startCheckout(targetPlan);
     } catch (error) {
       console.error(error);
 
@@ -106,22 +82,31 @@ export const PlanBillingSection = ({ teamId }: PlanBillingSectionProps) => {
         <div className="mt-6 flex flex-col gap-3 lg:mt-0 lg:min-w-[280px]">
           <Button
             variant="secondary"
-            disabled={loading || isRedirecting !== null || isStarterDisabled}
+            disabled={
+              loading || isRedirecting !== null || isStarterDisabled || checkoutLoading
+            }
             onClick={async () => handleUpgrade('STARTER')}
           >
             <Trans>Upgrade to Starter – $1/mo</Trans>
           </Button>
           <Button
-            disabled={loading || isRedirecting !== null || isProDisabled}
+            disabled={loading || isRedirecting !== null || isProDisabled || checkoutLoading}
             onClick={async () => handleUpgrade('PRO')}
           >
             <Trans>Upgrade to Pro / Teams – $11/mo</Trans>
           </Button>
-          {plan === 'PRO' && (
-            <p className="text-muted-foreground text-xs">
-              Pro plans can invite up to {PRO_TEAM_MEMBER_LIMIT} team members.
-            </p>
-          )}
+          <Button
+            variant="outline"
+            disabled={portalLoading}
+            onClick={() => {
+              void openPortal('TEAM');
+            }}
+          >
+            <Trans>Manage billing</Trans>
+          </Button>
+          <p className="text-muted-foreground text-xs">
+            <Trans>Pro plans can invite up to {PRO_TEAM_MEMBER_LIMIT} team members per team.</Trans>
+          </p>
         </div>
       </div>
     </section>

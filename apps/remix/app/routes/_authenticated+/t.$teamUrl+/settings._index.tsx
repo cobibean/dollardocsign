@@ -47,7 +47,7 @@ export default function TeamsSettingsPage({ loaderData }: Route.ComponentProps) 
 
       <TeamUpdateForm teamId={team.id} teamName={team.name} teamUrl={team.url} />
 
-      <PlanBillingSection teamId={team.id} />
+      <PlanBillingSection />
 
       <section className="mt-6 space-y-6">
         {(team.teamEmail || team.emailVerification) && (

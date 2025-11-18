@@ -16,6 +16,7 @@ import { Button } from '@documenso/ui/primitives/button';
 import { Card, CardContent } from '@documenso/ui/primitives/card';
 import { ScrollArea, ScrollBar } from '@documenso/ui/primitives/scroll-area';
 
+import { DashboardPlanStatus } from '~/components/general/dashboard-plan-status';
 import { OrganisationInvitations } from '~/components/general/organisations/organisation-invitations';
 import { InboxTable } from '~/components/tables/inbox-table';
 import { appMetaTags } from '~/utils/meta';
@@ -60,6 +61,8 @@ export default function DashboardPage() {
 
           <OrganisationInvitations className="mt-4" />
         </div>
+
+        {teams.length > 0 && <DashboardPlanStatus teamId={teams[0].id} />}
 
         {organisations.length === 0 && (
           <div className="mb-12 mt-6 flex flex-col items-center justify-center rounded-lg border py-32">

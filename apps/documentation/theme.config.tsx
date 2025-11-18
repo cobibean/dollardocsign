@@ -2,12 +2,14 @@ import type { DocsThemeConfig } from 'nextra-theme-docs';
 import { useConfig } from 'nextra-theme-docs';
 
 const themeConfig: DocsThemeConfig = {
-  logo: <span>Documenso</span>,
+  logo: <span>Dollar DocSign</span>,
   head: function useHead() {
     const config = useConfig<{ title?: string; description?: string }>();
 
-    const title = `${config.frontMatter.title} | Documenso Docs` || 'Documenso Docs';
-    const description = config.frontMatter.description || 'The official Documenso documentation';
+    const title = `${config.frontMatter.title} | Dollar DocSign Docs` || 'Dollar DocSign Docs';
+    const description =
+      config.frontMatter.description ||
+      'Dollar DocSign is the $1/mo signing stack for founders, built on Documenso CE.';
 
     return (
       <>
@@ -39,18 +41,18 @@ const themeConfig: DocsThemeConfig = {
     );
   },
   project: {
-    link: 'https://documen.so/github',
+    link: 'https://github.com/dollardocsign/dollardocsign',
   },
   chat: {
     link: 'https://documen.so/discord',
   },
-  docsRepositoryBase: 'https://github.com/documenso/documenso/tree/main/apps/documentation',
+  docsRepositoryBase: 'https://github.com/dollardocsign/dollardocsign/tree/main/apps/documentation',
   footer: {
     text: (
       <span>
         {new Date().getFullYear()} ©{' '}
         <a href="https://documen.so" target="_blank">
-          Documenso
+          Dollar DocSign
         </a>
         .
       </span>
@@ -60,7 +62,7 @@ const themeConfig: DocsThemeConfig = {
   primarySaturation: 48.47,
   useNextSeoProps() {
     return {
-      titleTemplate: '%s | Documenso Docs',
+      titleTemplate: '%s | Dollar DocSign Docs',
     };
   },
 };

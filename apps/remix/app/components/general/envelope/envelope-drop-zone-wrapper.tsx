@@ -27,6 +27,7 @@ import type { TCreateEnvelopePayload } from '@documenso/trpc/server/envelope-rou
 import { cn } from '@documenso/ui/lib/utils';
 import { useToast } from '@documenso/ui/primitives/use-toast';
 
+import { UpgradeCtaButtons } from '~/components/general/upgrade-cta-buttons';
 import { useCurrentTeam } from '~/providers/team';
 
 export interface EnvelopeDropZoneWrapperProps {
@@ -57,13 +58,29 @@ export const EnvelopeDropZoneWrapper = ({
     TIME_ZONES.find((timezone) => timezone === Intl.DateTimeFormat().resolvedOptions().timeZone) ??
     DEFAULT_DOCUMENT_TIME_ZONE;
 
-  const { quota, remaining, refreshLimits, maximumEnvelopeItemCount } = useLimits();
+  const { plan, usage, quota, remaining, refreshLimits, maximumEnvelopeItemCount } = useLimits();
 
   const { mutateAsync: createEnvelope } = trpc.envelope.create.useMutation();
 
-  const isUploadDisabled = remaining.documents === 0 || !user.emailVerified;
+  const limitReached = remaining.documents === 0;
+  const templateLocked = type === EnvelopeType.TEMPLATE && plan === 'FREE';
+  const nearFreeLimit =
+    plan === 'FREE' &&
+    remaining.documents > 0 &&
+    usage.lifetime.limit - usage.lifetime.used <= 2;
+
+  const isUploadDisabled = limitReached || !user.emailVerified || templateLocked;
 
   const onFileDrop = async (files: File[]) => {
+    if (templateLocked) {
+      toast({
+        title: t`Templates are a paid feature.`,
+        description: t`Upgrade to unlock templates.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (isUploadDisabled && IS_BILLING_ENABLED()) {
       await navigate(`/o/${organisation.url}/settings/billing`);
       return;
@@ -264,6 +281,44 @@ export const EnvelopeDropZoneWrapper = ({
             <p className="text-foreground mt-8 font-medium">
               <Trans>Uploading</Trans>
             </p>
+          </div>
+        </div>
+      )}
+
+      {templateLocked && (
+        <div className="pointer-events-none absolute inset-x-4 top-4 rounded-md border border-amber-400/60 bg-amber-400/10 p-4 text-center text-sm shadow-sm md:inset-x-8">
+          <p className="font-semibold text-amber-900 dark:text-amber-200">
+            <Trans>Templates are limited to paid plans.</Trans>
+          </p>
+          <div className="pointer-events-auto mt-3 flex justify-center">
+            <UpgradeCtaButtons showStarter showPro />
+          </div>
+        </div>
+      )}
+
+      {limitReached && (
+        <div className="pointer-events-none absolute inset-x-4 bottom-4 rounded-md border border-destructive/40 bg-destructive/10 p-4 text-center text-sm shadow-sm md:inset-x-8">
+          <p className="font-semibold text-destructive">
+            <Trans>You’ve reached your document limit.</Trans>
+          </p>
+          <p className="text-muted-foreground mt-1 text-xs">
+            <Trans>Upgrade for more monthly documents.</Trans>
+          </p>
+          <div className="pointer-events-auto mt-3 flex justify-center">
+            <UpgradeCtaButtons showStarter={plan === 'FREE'} showPro={plan !== 'PRO'} />
+          </div>
+        </div>
+      )}
+
+      {nearFreeLimit && (
+        <div className="pointer-events-none absolute inset-x-4 bottom-4 rounded-md border border-amber-400/60 bg-amber-400/10 p-3 text-center text-xs shadow-sm md:inset-x-8">
+          <p className="font-medium text-amber-900 dark:text-amber-200">
+            <Trans>
+              You’ve used {usage.lifetime.used} of {usage.lifetime.limit} free documents.
+            </Trans>
+          </p>
+          <div className="pointer-events-auto mt-2 flex justify-center">
+            <UpgradeCtaButtons showStarter />
           </div>
         </div>
       )}
